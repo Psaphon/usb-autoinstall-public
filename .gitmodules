@@ -1,0 +1,3 @@
+[submodule "components/devtools"]
+	path = components/devtools
+	url = https://github.com/Psaphon/devtools.git

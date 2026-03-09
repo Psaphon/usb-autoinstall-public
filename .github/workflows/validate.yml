@@ -1,0 +1,44 @@
+---
+name: Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint scripts and config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate user-data YAML syntax
+        run: |
+          python3 -c "
+          import yaml, sys
+          with open('user-data') as f:
+              content = f.read()
+          if content.startswith('#cloud-config'):
+              content = content.split('\n', 1)[1]
+          try:
+              data = yaml.safe_load(content)
+              keys = list(data.get('autoinstall', {}).keys())
+              print(f'user-data: VALID ({len(keys)} sections)')
+          except yaml.YAMLError as e:
+              print(f'user-data: INVALID')
+              print(e)
+              sys.exit(1)
+          "
+
+      - name: Lint user-data with yamllint
+        run: |
+          sudo apt-get install -y -qq yamllint
+          yamllint user-data
+
+      - name: Shellcheck all scripts
+        run: shellcheck scripts/*.sh

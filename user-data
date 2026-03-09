@@ -1,0 +1,762 @@
+#cloud-config
+#===============================================================================
+# Ephemeral Security Workstation - USB Autoinstall Configuration (DESKTOP)
+#===============================================================================
+# Description: Cloud-init autoinstall configuration for Ubuntu 25.10 with XFCE Desktop
+# Version: 3.0.0
+# Author: Ephemeral Security Workstation Project
+#
+# This file orchestrates the complete automated installation:
+#   1. Partitioning with LUKS encryption
+#   2. Ubuntu base system installation
+#   3. XFCE Desktop Environment installation
+#   4. Package installation from USB (with verification)
+#   5. System hardening configuration
+#   6. Application deployment
+#   7. Service enablement
+#
+# Total install time: ~20 minutes (fully automated)
+#===============================================================================
+
+autoinstall:
+  version: 1
+
+  #=============================================================================
+  # INTERACTIVE SECTIONS
+  # Only the storage screen is shown to the user (to set LUKS passphrase and
+  # confirm target disk). Everything else runs fully automated.
+  #=============================================================================
+  interactive-sections:
+    - storage
+
+  #=============================================================================
+  # INSTALLATION IDENTITY
+  #=============================================================================
+
+  identity:
+    hostname: ws
+    username: user
+    # Password: "password" (change after first login!)
+    # Generated with: openssl passwd -6 -salt "autoinstall" "password"
+    password: "$6$autoinstall$RxcKAmq.SrFRFlImN0pHCQvlwlfWnrFLrFVDyvbtQ7KRjY0BArWdgbWRNZZSL33UDyOq2DnLKbhuD63mZ9SmA1"
+    realname: "user"
+
+  #=============================================================================
+  # LOCALE & TIMEZONE
+  #=============================================================================
+
+  locale: en_US.UTF-8
+  timezone: UTC
+  keyboard:
+    layout: us
+    variant: ""
+
+  #=============================================================================
+  # NETWORK CONFIGURATION
+  #=============================================================================
+
+  network:
+    version: 2
+    ethernets:
+      default:
+        dhcp4: true
+        dhcp6: true
+        optional: true
+        match:
+          name: "en*"
+
+  #=============================================================================
+  # STORAGE CONFIGURATION (LUKS Encryption)
+  #=============================================================================
+
+  storage:
+    layout:
+      name: lvm
+      # No hardcoded device path — NVMe numbering can change between boots.
+      # With interactive-sections: [storage], the user confirms the target disk
+      # in the installer UI. The match below is just a hint to pre-select SSDs.
+      match:
+        ssd: true
+      # LUKS encryption — default passphrase shown in interactive storage UI
+      # User should change this in the UI before confirming
+      password: "changeme"
+      sizing-policy: all
+
+  #=============================================================================
+  # SSH CONFIGURATION
+  #=============================================================================
+
+  ssh:
+    install-server: yes
+    allow-pw: yes  # Allow password initially, disable after key setup
+
+  #=============================================================================
+  # PACKAGE SELECTION
+  # NOTE: We do NOT use the autoinstall 'packages:' list because subiquity
+  # ignores our sources_list and only configures the target's apt with
+  # file:///cdrom (the ISO base packages). Our custom packages from USB are
+  # installed via apt-get in late-commands instead, where we control the
+  # target's apt sources directly.
+  #=============================================================================
+
+  # packages: [] — intentionally empty; installed in late-commands
+
+  #=============================================================================
+  # APT CONFIGURATION
+  #=============================================================================
+
+  apt:
+    geoip: false
+    fallback: offline-install
+
+  #=============================================================================
+  # EARLY COMMANDS (Before Installation)
+  #=============================================================================
+
+  early-commands:
+    #=========================================================================
+    # DIAGNOSTIC LOGGING SETUP
+    # Mount DIAGNOSTICS partition and start capturing all output for debugging
+    #=========================================================================
+    - mkdir -p /media/diagnostics
+    - |
+      # Try to mount DIAGNOSTICS partition for logging
+      if mount LABEL=DIAGNOSTICS /media/diagnostics 2>/dev/null; then
+        echo "=== AUTOINSTALL LOG ===" > /media/diagnostics/autoinstall.log
+        echo "Started: $(date)" >> /media/diagnostics/autoinstall.log
+        echo "Kernel cmdline: $(cat /proc/cmdline)" >> /media/diagnostics/autoinstall.log
+        echo "DIAGNOSTICS partition mounted - logging enabled"
+      else
+        echo "WARNING: Could not mount DIAGNOSTICS partition for logging"
+      fi
+
+    # Mount the USB stick (autoinstall files)
+    # Try multiple methods: by label (UEFI_BOOT), then common device names
+    - mkdir -p /media/autoinstall
+    - |
+      if mount LABEL=UEFI_BOOT /media/autoinstall 2>/dev/null; then
+        echo "Mounted via LABEL=UEFI_BOOT"
+        echo "[EARLY] Mounted autoinstall via LABEL=UEFI_BOOT" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      elif mount LABEL=AUTOINSTALL /media/autoinstall 2>/dev/null; then
+        echo "Mounted via LABEL=AUTOINSTALL"
+        echo "[EARLY] Mounted autoinstall via LABEL=AUTOINSTALL" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      elif mount /dev/sdb1 /media/autoinstall 2>/dev/null; then
+        echo "Mounted via /dev/sdb1"
+        echo "[EARLY] Mounted autoinstall via /dev/sdb1" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      elif mount /dev/sdc1 /media/autoinstall 2>/dev/null; then
+        echo "Mounted via /dev/sdc1"
+        echo "[EARLY] Mounted autoinstall via /dev/sdc1" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      else
+        echo "WARNING: Could not mount autoinstall USB"
+        echo "[EARLY] ERROR: Could not mount autoinstall USB" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      fi
+
+    # Log the autoinstall directory contents
+    - |
+      echo "[EARLY] Autoinstall directory contents:" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      ls -la /media/autoinstall/ >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+
+    #=========================================================================
+    # SECRETS PARTITION DETECTION & MOUNT
+    # Find the USB device from UEFI_BOOT label, check if partition 3 exists
+    # as plain ext4, mount to /media/secrets. No passphrase needed.
+    # Non-fatal: if no SECRETS partition, installation continues normally.
+    #=========================================================================
+    - mkdir -p /media/secrets
+    - |
+      echo "[EARLY] Checking for SECRETS partition..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      # Find the USB device that holds UEFI_BOOT (partition 1)
+      USB_DEV=""
+      UEFI_DEV=$(blkid -L UEFI_BOOT 2>/dev/null || true)
+      if [ -n "$UEFI_DEV" ]; then
+        # Strip partition number to get base device (e.g. /dev/sdb1 -> /dev/sdb)
+        USB_DEV=$(echo "$UEFI_DEV" | sed 's/p\?[0-9]*$//')
+        echo "[EARLY] USB base device: $USB_DEV (from UEFI_BOOT=$UEFI_DEV)" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      fi
+      if [ -z "$USB_DEV" ]; then
+        echo "[EARLY] Could not determine USB device — skipping SECRETS" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+        exit 0
+      fi
+      # Determine partition 3 path
+      SECRETS_PART="${USB_DEV}3"
+      if echo "$USB_DEV" | grep -qE '(nvme|mmcblk)'; then
+        SECRETS_PART="${USB_DEV}p3"
+      fi
+      echo "[EARLY] Checking SECRETS partition: $SECRETS_PART" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      if [ ! -b "$SECRETS_PART" ]; then
+        echo "[EARLY] No partition 3 found — SECRETS not configured" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+        exit 0
+      fi
+      # Mount plain ext4 SECRETS partition (no passphrase needed)
+      FSTYPE=$(blkid -s TYPE -o value "$SECRETS_PART" 2>/dev/null || true)
+      if [ "$FSTYPE" != "ext4" ]; then
+        echo "[EARLY] Partition 3 exists but is not ext4 ($FSTYPE) — skipping" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+        exit 0
+      fi
+      if mount "$SECRETS_PART" /media/secrets 2>>/media/diagnostics/autoinstall.log; then
+        echo "[EARLY] SECRETS partition mounted at /media/secrets" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+        ls -la /media/secrets/ >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      else
+        echo "[EARLY] WARNING: Failed to mount SECRETS partition — continuing without secrets" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      fi
+
+    #=========================================================================
+    # STORAGE PARTITION MOUNT
+    # Partition 4 (ext4, label STORAGE) holds large non-core assets:
+    # Ollama binary, cloud images, etc. Mounted for post-install access.
+    #=========================================================================
+    - mkdir -p /media/storage
+    - |
+      echo "[EARLY] Checking for STORAGE partition..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      if mount LABEL=STORAGE /media/storage 2>>/media/diagnostics/autoinstall.log; then
+        echo "[EARLY] STORAGE partition mounted at /media/storage" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+        ls -la /media/storage/ >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      else
+        echo "[EARLY] WARNING: STORAGE partition not found — large assets (Ollama, cloud images) won't be available" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      fi
+
+    # Verify package integrity (CRITICAL SECURITY CHECK)
+    # Uses /var/log for logging since /tmp may not be reliable during early boot
+    - |
+      echo "[EARLY] Running package verification..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      if [ -x /media/autoinstall/usb-autoinstall/scripts/verify-packages.sh ]; then
+        /media/autoinstall/usb-autoinstall/scripts/verify-packages.sh 2>&1 | tee -a /media/diagnostics/autoinstall.log || true
+      elif [ -x /media/autoinstall/scripts/verify-packages.sh ]; then
+        /media/autoinstall/scripts/verify-packages.sh 2>&1 | tee -a /media/diagnostics/autoinstall.log || true
+      else
+        echo "Warning: verify-packages.sh not found or not executable"
+        echo "[EARLY] Warning: verify-packages.sh not found" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      fi
+
+    # Create local package repository if packages exist
+    # Copy ALL files including pre-generated Packages/Packages.gz index
+    - mkdir -p /var/cache/autoinstall-packages
+    - |
+      PKG_SRC=""
+      if [ -d /media/autoinstall/usb-autoinstall/packages ]; then
+        PKG_SRC="/media/autoinstall/usb-autoinstall/packages"
+      elif [ -d /media/autoinstall/packages ]; then
+        PKG_SRC="/media/autoinstall/packages"
+      fi
+      if [ -n "$PKG_SRC" ]; then
+        # Copy debs AND index files (Packages, Packages.gz)
+        cp "$PKG_SRC"/*.deb /var/cache/autoinstall-packages/ 2>/dev/null || true
+        cp "$PKG_SRC"/Packages /var/cache/autoinstall-packages/ 2>/dev/null || true
+        cp "$PKG_SRC"/Packages.gz /var/cache/autoinstall-packages/ 2>/dev/null || true
+        echo "[EARLY] Copied packages from $PKG_SRC" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      else
+        echo "[EARLY] No packages directory found" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      fi
+    # If pre-generated Packages file wasn't copied or is empty, try to generate it
+    - |
+      if [ ! -s /var/cache/autoinstall-packages/Packages ]; then
+        echo "[EARLY] Packages index missing or empty, attempting to generate..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+        if command -v dpkg-scanpackages >/dev/null 2>&1; then
+          cd /var/cache/autoinstall-packages && dpkg-scanpackages . /dev/null > Packages 2>/dev/null && gzip -9c Packages > Packages.gz 2>/dev/null || true
+          echo "[EARLY] Generated Packages index with dpkg-scanpackages" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+        else
+          echo "[EARLY] WARNING: dpkg-scanpackages not available and no pre-generated index!" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+        fi
+      else
+        echo "[EARLY] Using pre-generated Packages index from USB" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      fi
+    - |
+      pkg_count=$(ls /var/cache/autoinstall-packages/*.deb 2>/dev/null | wc -l)
+      pkg_index_size=$(stat -c%s /var/cache/autoinstall-packages/Packages 2>/dev/null || echo "0")
+      echo "[EARLY] Package repository: $pkg_count debs, Packages index $pkg_index_size bytes" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+
+    #=========================================================================
+    # CONFIGURE APT FOR OFFLINE INSTALL
+    # Directly write apt sources to disable network repos and add local repo.
+    # We do this in early-commands because the autoinstall apt: section's
+    # disable_suites doesn't work with deb822 format (Ubuntu 25.10+) and
+    # the sources: config gets mangled into cdrom:// URLs.
+    #=========================================================================
+    - |
+      echo "[EARLY] Configuring apt for offline install..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      # Disable ALL network sources (deb822 format used by Ubuntu 25.10)
+      if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
+        mv /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources.disabled
+        echo "[EARLY] Disabled ubuntu.sources (deb822 network repos)" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      fi
+      # Also disable any traditional sources.list entries
+      if [ -f /etc/apt/sources.list ]; then
+        sed -i 's/^deb /#deb /' /etc/apt/sources.list 2>/dev/null || true
+        echo "[EARLY] Commented out sources.list entries" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      fi
+      # Add our local USB package repo
+      echo "deb [trusted=yes] file:///var/cache/autoinstall-packages/ ./" > /etc/apt/sources.list.d/local-usb.list
+      echo "[EARLY] Added local-usb.list apt source" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      # Update apt cache with local repo only
+      apt-get update >> /media/diagnostics/autoinstall.log 2>&1 || true
+      echo "[EARLY] apt-get update completed" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      # Log the resulting apt policy for debugging
+      apt-cache policy >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+
+    # Log available block devices (helps diagnose storage issues)
+    - |
+      echo "[EARLY] Available block devices:" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      lsblk -o NAME,SIZE,TYPE,MODEL >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+
+    # Log network status (helps diagnose network issues)
+    - |
+      echo "[EARLY] Network interfaces:" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      ip link show >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      echo "[EARLY] IP addresses:" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      ip addr show >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+
+    # Log final apt configuration (helps diagnose package issues)
+    - |
+      echo "[EARLY] Final apt source configuration:" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      echo "[EARLY] sources.list.d contents:" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      ls -la /etc/apt/sources.list.d/ >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      echo "[EARLY] Active sources:" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      cat /etc/apt/sources.list.d/local-usb.list >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      PKG_STATUS=$(test -s /var/cache/autoinstall-packages/Packages && echo 'OK (non-empty)' || echo 'MISSING OR EMPTY')
+      echo "[EARLY] Packages index check: $PKG_STATUS" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+
+    # Final early-commands marker
+    - |
+      echo "[EARLY] ========================================" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      echo "[EARLY] Early-commands completed: $(date)" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      echo "[EARLY] Proceeding to storage/package installation..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      echo "[EARLY] ========================================" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      sync
+
+  #=============================================================================
+  # ERROR COMMANDS (Run ONLY when installation fails)
+  # Captures all available logs to DIAGNOSTICS partition for debugging
+  #=============================================================================
+
+  error-commands:
+    - |
+      mkdir -p /media/diagnostics
+      mount LABEL=DIAGNOSTICS /media/diagnostics 2>/dev/null || true
+      echo "=== INSTALLATION FAILED ===" > /media/diagnostics/ERROR.log
+      echo "Timestamp: $(date)" >> /media/diagnostics/ERROR.log
+      echo "Kernel cmdline: $(cat /proc/cmdline)" >> /media/diagnostics/ERROR.log
+      echo "" >> /media/diagnostics/ERROR.log
+      echo "=== BLOCK DEVICES ===" >> /media/diagnostics/ERROR.log
+      lsblk -o NAME,SIZE,TYPE,FSTYPE,LABEL >> /media/diagnostics/ERROR.log 2>/dev/null
+      echo "" >> /media/diagnostics/ERROR.log
+      echo "=== APT SOURCES ===" >> /media/diagnostics/ERROR.log
+      cat /etc/apt/sources.list >> /media/diagnostics/ERROR.log 2>/dev/null
+      ls -la /etc/apt/sources.list.d/ >> /media/diagnostics/ERROR.log 2>/dev/null
+      cat /etc/apt/sources.list.d/*.list >> /media/diagnostics/ERROR.log 2>/dev/null
+      cat /etc/apt/sources.list.d/*.sources >> /media/diagnostics/ERROR.log 2>/dev/null
+      echo "" >> /media/diagnostics/ERROR.log
+      echo "=== LOCAL REPO STATUS ===" >> /media/diagnostics/ERROR.log
+      ls -la /var/cache/autoinstall-packages/ >> /media/diagnostics/ERROR.log 2>/dev/null
+      apt-cache policy >> /media/diagnostics/ERROR.log 2>/dev/null
+      echo "" >> /media/diagnostics/ERROR.log
+      echo "=== TARGET APT SOURCES ===" >> /media/diagnostics/ERROR.log
+      echo "--- /target/etc/apt/sources.list ---" >> /media/diagnostics/ERROR.log
+      cat /target/etc/apt/sources.list >> /media/diagnostics/ERROR.log 2>/dev/null
+      echo "--- /target/etc/apt/sources.list.d/ ---" >> /media/diagnostics/ERROR.log
+      ls -la /target/etc/apt/sources.list.d/ >> /media/diagnostics/ERROR.log 2>/dev/null
+      cat /target/etc/apt/sources.list.d/*.list >> /media/diagnostics/ERROR.log 2>/dev/null
+      cat /target/etc/apt/sources.list.d/*.sources >> /media/diagnostics/ERROR.log 2>/dev/null
+      echo "" >> /media/diagnostics/ERROR.log
+      echo "=== CDROM PACKAGES PATH ===" >> /media/diagnostics/ERROR.log
+      ls /cdrom/usb-autoinstall/packages/Packages >> /media/diagnostics/ERROR.log 2>&1
+      ls /target/cdrom/usb-autoinstall/packages/Packages >> /media/diagnostics/ERROR.log 2>&1
+      ls /cdrom/usb-autoinstall/packages/*.deb 2>/dev/null | wc -l >> /media/diagnostics/ERROR.log 2>&1
+      echo "" >> /media/diagnostics/ERROR.log
+      echo "=== TARGET APT-GET UPDATE TEST ===" >> /media/diagnostics/ERROR.log
+      chroot /target apt-get update >> /media/diagnostics/ERROR.log 2>&1 || true
+      chroot /target apt-cache policy xfce4 >> /media/diagnostics/ERROR.log 2>&1 || true
+      echo "" >> /media/diagnostics/ERROR.log
+      echo "=== STORAGE STATUS ===" >> /media/diagnostics/ERROR.log
+      cat /proc/partitions >> /media/diagnostics/ERROR.log 2>/dev/null
+      pvs >> /media/diagnostics/ERROR.log 2>/dev/null
+      lvs >> /media/diagnostics/ERROR.log 2>/dev/null
+      echo "" >> /media/diagnostics/ERROR.log
+      # Copy all installer/curtin/cloud-init logs
+      cp -r /var/log/installer /media/diagnostics/ 2>/dev/null || true
+      cp /var/log/curtin*.log /media/diagnostics/ 2>/dev/null || true
+      cp /var/log/cloud-init*.log /media/diagnostics/ 2>/dev/null || true
+      tail -1000 /var/log/syslog > /media/diagnostics/syslog-tail.log 2>/dev/null || true
+      # Append to autoinstall.log
+      echo "[ERROR] Installation failed at $(date)" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      echo "[ERROR] Logs saved to DIAGNOSTICS partition" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      sync
+      umount /media/diagnostics 2>/dev/null || true
+
+  #=============================================================================
+  # LATE COMMANDS (After Installation, Before Reboot)
+  #=============================================================================
+
+  late-commands:
+    #=========================================================================
+    # PHASE 1: PREPARE CHROOT
+    # Mount virtual filesystems needed by package post-inst scripts and
+    # service enablement. These stay mounted through the ENTIRE deployment
+    # (Fixes: /proc not mounted during systemctl enable)
+    #=========================================================================
+    - |
+      echo "[LATE] Phase 1: Preparing chroot environment..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      mount --bind /proc /target/proc 2>/dev/null || true
+      mount --bind /sys /target/sys 2>/dev/null || true
+      mount --bind /dev /target/dev 2>/dev/null || true
+      mount --bind /dev/pts /target/dev/pts 2>/dev/null || true
+      # Create /etc/mtab symlink if missing (needed by stat/df in post-inst scripts)
+      [ -e /target/etc/mtab ] || ln -sf /proc/self/mounts /target/etc/mtab
+      # Bind-mount autoinstall files so post-install.sh can access them inside chroot
+      mkdir -p /target/media/autoinstall
+      mount --bind /media/autoinstall /target/media/autoinstall
+      # Bind-mount STORAGE partition (Ollama, cloud images) if available
+      if mountpoint -q /media/storage 2>/dev/null; then
+        mkdir -p /target/media/storage
+        mount --bind /media/storage /target/media/storage
+        echo "[LATE] STORAGE partition bind-mounted into chroot" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      fi
+      echo "[LATE] Chroot prepared: /proc /sys /dev /dev/pts /media/autoinstall mounted" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+
+    #=========================================================================
+    # PHASE 2: INSTALL PACKAGES FROM USB
+    # Subiquity ignores sources_list for the target — so we bypass the
+    # packages: list entirely and install via apt-get in late-commands,
+    # where we control the target's apt sources directly.
+    # /cdrom/usb-autoinstall/packages/ is accessible from /target.
+    #=========================================================================
+    - |
+      echo "[LATE] Phase 2: Installing packages from USB..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      # Disable network sources on the target so apt only sees our local packages.
+      # Curtin restores ubuntu.sources on the target — the snap stub firefox has
+      # epoch 1: which makes apt prefer it over our Mozilla .deb (version 148.0).
+      if [ -f /target/etc/apt/sources.list.d/ubuntu.sources ]; then
+        mv /target/etc/apt/sources.list.d/ubuntu.sources /target/etc/apt/sources.list.d/ubuntu.sources.bak
+        echo "[LATE] Disabled target ubuntu.sources during package install" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      fi
+      echo "deb [trusted=yes] file:///cdrom/usb-autoinstall/packages/ ./" > /target/etc/apt/sources.list.d/local-usb.list
+      chroot /target apt-get update >> /media/diagnostics/autoinstall.log 2>&1
+      chroot /target apt-cache policy firefox >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+    - |
+      # Group 1: Desktop (critical)
+      echo "[LATE] Phase 2.1: Installing desktop packages..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      if DEBIAN_FRONTEND=noninteractive chroot /target apt-get install -y --no-install-recommends \
+        xfce4 \
+        xfce4-goodies \
+        lightdm \
+        lightdm-gtk-greeter \
+        lightdm-gtk-greeter-settings \
+        xfce4-notifyd \
+        xfce4-power-manager \
+        thunar \
+        xfce4-terminal \
+        firefox \
+        dbus-x11 \
+        xorg \
+        libnotify-bin \
+        tilix \
+        >> /media/diagnostics/autoinstall.log 2>&1; then
+        echo "[LATE] Phase 2.1: Desktop packages installed successfully" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+        PKG_RESULTS="desktop:OK"
+      else
+        echo "[LATE] ERROR: Phase 2.1: Desktop package install FAILED (exit code $?)" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+        PKG_RESULTS="desktop:FAIL"
+      fi
+    - |
+      # Group 2: Network
+      echo "[LATE] Phase 2.2: Installing network packages..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      if DEBIAN_FRONTEND=noninteractive chroot /target apt-get install -y --no-install-recommends \
+        wireguard-tools \
+        resolvconf \
+        curl \
+        wget \
+        network-manager \
+        network-manager-gnome \
+        wpasupplicant \
+        >> /media/diagnostics/autoinstall.log 2>&1; then
+        echo "[LATE] Phase 2.2: Network packages installed successfully" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      else
+        echo "[LATE] WARNING: Phase 2.2: Network package install FAILED (exit code $?)" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      fi
+    - |
+      # Group 3: Python/Dashboard
+      echo "[LATE] Phase 2.3: Installing Python/dashboard packages..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      if DEBIAN_FRONTEND=noninteractive chroot /target apt-get install -y --no-install-recommends \
+        python3 \
+        python3-pip \
+        python3-flask \
+        python3-psutil \
+        python3-requests \
+        python3-feedparser \
+        >> /media/diagnostics/autoinstall.log 2>&1; then
+        echo "[LATE] Phase 2.3: Python packages installed successfully" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      else
+        echo "[LATE] WARNING: Phase 2.3: Python package install FAILED (exit code $?)" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      fi
+    - |
+      # Group 4: Security
+      echo "[LATE] Phase 2.4: Installing security packages..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      if DEBIAN_FRONTEND=noninteractive chroot /target apt-get install -y --no-install-recommends \
+        ufw \
+        fail2ban \
+        aide \
+        lynis \
+        rkhunter \
+        chkrootkit \
+        unattended-upgrades \
+        apt-listchanges \
+        needrestart \
+        debsums \
+        >> /media/diagnostics/autoinstall.log 2>&1; then
+        echo "[LATE] Phase 2.4: Security packages installed successfully" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      else
+        echo "[LATE] WARNING: Phase 2.4: Security package install FAILED (exit code $?)" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      fi
+    - |
+      # Group 5: Dev & Extras
+      echo "[LATE] Phase 2.5: Installing dev and extra packages..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      if DEBIAN_FRONTEND=noninteractive chroot /target apt-get install -y --no-install-recommends \
+        build-essential \
+        software-properties-common \
+        fonts-liberation \
+        fonts-dejavu \
+        unzip \
+        zip \
+        p7zip-full \
+        git \
+        libasound2t64 \
+        xdg-utils \
+        >> /media/diagnostics/autoinstall.log 2>&1; then
+        echo "[LATE] Phase 2.5: Dev/extra packages installed successfully" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      else
+        echo "[LATE] WARNING: Phase 2.5: Dev/extra package install FAILED (exit code $?)" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      fi
+    - |
+      # Group 6: VM/QEMU (AI Sandbox infrastructure)
+      echo "[LATE] Phase 2.6: Installing VM/QEMU packages..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      if DEBIAN_FRONTEND=noninteractive chroot /target apt-get install -y --no-install-recommends \
+        qemu-system-x86 \
+        qemu-utils \
+        cloud-image-utils \
+        >> /media/diagnostics/autoinstall.log 2>&1; then
+        echo "[LATE] Phase 2.6: VM/QEMU packages installed successfully" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      else
+        echo "[LATE] WARNING: Phase 2.6: VM/QEMU package install FAILED (exit code $?)" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      fi
+    - |
+      # Phase 2 summary
+      echo "[LATE] Phase 2: Package installation complete. Groups finished." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+
+    #=========================================================================
+    # PHASE 3: RESTORE NETWORK APT SOURCES
+    # Remove local USB repo and restore ubuntu.sources for post-install use
+    # (VS Code dependency resolution, future apt-get install -f)
+    #=========================================================================
+    - |
+      echo "[LATE] Phase 3: Restoring network apt sources..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      rm -f /target/etc/apt/sources.list.d/local-usb.list
+      # Restore ubuntu.sources from our Phase 2 backup or curtin's backup
+      if [ -f /target/etc/apt/sources.list.d/ubuntu.sources.bak ]; then
+        mv /target/etc/apt/sources.list.d/ubuntu.sources.bak /target/etc/apt/sources.list.d/ubuntu.sources
+        echo "[LATE] Restored ubuntu.sources from .bak" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      elif [ -f /target/etc/apt/sources.list.d/ubuntu.sources.curtin.orig ]; then
+        mv /target/etc/apt/sources.list.d/ubuntu.sources.curtin.orig /target/etc/apt/sources.list.d/ubuntu.sources
+        echo "[LATE] Restored ubuntu.sources from curtin.orig" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      fi
+
+    #=========================================================================
+    # PHASE 4: INSTALL DOCKER & VS CODE FROM USB DEBS
+    # These use dpkg -i since they come from third-party repos (Docker, Microsoft)
+    #=========================================================================
+    - |
+      if ls /target/cdrom/usb-autoinstall/packages/docker-ce*.deb 1>/dev/null 2>&1; then
+        echo "[LATE] Phase 4: Installing Docker from USB packages..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+        chroot /target dpkg -i /cdrom/usb-autoinstall/packages/docker*.deb /cdrom/usb-autoinstall/packages/containerd*.deb >> /media/diagnostics/autoinstall.log 2>&1 || true
+        chroot /target apt-get install -f -y >> /media/diagnostics/autoinstall.log 2>&1 || true
+      else
+        echo "[LATE] Phase 4: No Docker packages found on USB — skipping" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      fi
+    - |
+      if ls /target/cdrom/usb-autoinstall/packages/code*.deb 1>/dev/null 2>&1; then
+        echo "[LATE] Installing VS Code from USB..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+        chroot /target dpkg -i /cdrom/usb-autoinstall/packages/code*.deb >> /media/diagnostics/autoinstall.log 2>&1 || true
+        chroot /target apt-get install -f -y >> /media/diagnostics/autoinstall.log 2>&1 || true
+      fi
+
+    #=========================================================================
+    # PHASE 5: RUN POST-INSTALL SCRIPT
+    # Deploys application files, scripts, systemd units, configs, and desktop
+    # files. Must run BEFORE service enablement (it deploys the unit files).
+    # Runs inside chroot with /proc and /media/autoinstall still mounted.
+    #=========================================================================
+    - |
+      echo "[LATE] Phase 5: Running post-install deployment script..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      if [ -x /target/media/autoinstall/usb-autoinstall/scripts/post-install.sh ]; then
+        chroot /target /media/autoinstall/usb-autoinstall/scripts/post-install.sh >> /media/diagnostics/autoinstall.log 2>&1 || true
+        echo "[LATE] post-install.sh exit code: $?" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+        # Copy deployment log to diagnostics
+        cp /target/var/log/baseline-post-install.log /media/diagnostics/ 2>/dev/null || true
+      else
+        echo "[LATE] WARNING: post-install.sh not found or not executable" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+        echo "[LATE] Checked: /target/media/autoinstall/usb-autoinstall/scripts/post-install.sh" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+        ls -la /target/media/autoinstall/usb-autoinstall/scripts/ >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      fi
+
+    #=========================================================================
+    # PHASE 5.5: DEPLOY WIREGUARD CONFIG FROM SECRETS
+    # If SECRETS partition was unlocked and contains wg0.conf, deploy it
+    # to the target system so VPN works immediately after first boot.
+    #=========================================================================
+    - |
+      if [ -f /media/secrets/wireguard/wg0.conf ]; then
+        echo "[LATE] Phase 5.5: Deploying WireGuard config from SECRETS..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+        mkdir -p /target/etc/wireguard
+        chmod 700 /target/etc/wireguard
+        cp /media/secrets/wireguard/wg0.conf /target/etc/wireguard/wg0.conf
+        chmod 600 /target/etc/wireguard/wg0.conf
+        echo "[LATE] WireGuard config deployed from SECRETS partition" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      else
+        echo "[LATE] Phase 5.5: No SECRETS wg0.conf found — skipping" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      fi
+    - |
+      # Deploy wifi connections from SECRETS if present
+      if [ -d /media/secrets/wifi ]; then
+        WIFI_COUNT=0
+        mkdir -p /target/etc/NetworkManager/system-connections
+        for f in /media/secrets/wifi/*.nmconnection; do
+          [ -f "$f" ] || continue
+          cp "$f" /target/etc/NetworkManager/system-connections/
+          chmod 600 "/target/etc/NetworkManager/system-connections/$(basename "$f")"
+          WIFI_COUNT=$((WIFI_COUNT + 1))
+        done
+        if [ "$WIFI_COUNT" -gt 0 ]; then
+          echo "[LATE] Phase 5.5: Deployed $WIFI_COUNT wifi connection(s) from SECRETS" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+        else
+          echo "[LATE] Phase 5.5: SECRETS/wifi/ exists but no .nmconnection files found" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+        fi
+      else
+        echo "[LATE] Phase 5.5: No SECRETS/wifi/ directory — skipping wifi deploy" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      fi
+
+    #=========================================================================
+    # PHASE 6: CONFIGURE SYSTEM & ENABLE SERVICES
+    # Service unit files now exist (deployed by post-install.sh in Phase 5).
+    # /proc is still mounted so systemctl works inside chroot.
+    #=========================================================================
+    - |
+      echo "[LATE] Phase 6: Configuring system and enabling services..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      # LightDM auto-login (write directly to avoid YAML heredoc issues)
+      mkdir -p /target/etc/lightdm/lightdm.conf.d
+      printf '%s\n' '[Seat:*]' 'autologin-user=user' 'autologin-user-timeout=0' > /target/etc/lightdm/lightdm.conf.d/50-autologin.conf
+      echo "[LATE] LightDM auto-login configured" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+    - |
+      # Network timeout — don't let boot hang waiting for DHCP
+      echo "[LATE] Configuring network wait timeout (60s)..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      mkdir -p /target/etc/systemd/system/systemd-networkd-wait-online.service.d
+      printf '%s\n' '[Service]' 'ExecStart=' 'ExecStart=/lib/systemd/systemd-networkd-wait-online --timeout=60' > /target/etc/systemd/system/systemd-networkd-wait-online.service.d/timeout.conf
+      echo "[LATE] Network wait timeout set to 60s" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+    - |
+      # UFW firewall
+      echo "[LATE] Configuring UFW firewall..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      chroot /target ufw --force enable >> /media/diagnostics/autoinstall.log 2>&1 || true
+      chroot /target ufw default deny incoming >> /media/diagnostics/autoinstall.log 2>&1 || true
+      chroot /target ufw default allow outgoing >> /media/diagnostics/autoinstall.log 2>&1 || true
+      chroot /target ufw allow 51820/udp >> /media/diagnostics/autoinstall.log 2>&1 || true
+      # Port 5000 (dashboard) intentionally not opened — dashboard disabled by default
+    - |
+      # Service enablement is now handled by post-install.sh (reads component services.list files)
+      # Only configure things that post-install.sh can't handle from inside chroot:
+      echo "[LATE] Configuring unattended-upgrades..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      DEBIAN_FRONTEND=noninteractive chroot /target dpkg-reconfigure -plow unattended-upgrades >> /media/diagnostics/autoinstall.log 2>&1 || true
+      echo "[LATE] Phase 6 complete" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+
+    #=========================================================================
+    # PHASE 7: UNMOUNT VIRTUAL FILESYSTEMS
+    # All chroot work is done — clean up bind mounts
+    #=========================================================================
+    - |
+      echo "[LATE] Phase 7: Cleaning up chroot mounts..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      umount /target/media/storage 2>/dev/null || true
+      umount /target/media/autoinstall 2>/dev/null || true
+      umount /target/dev/pts 2>/dev/null || true
+      umount /target/dev 2>/dev/null || true
+      umount /target/sys 2>/dev/null || true
+      umount /target/proc 2>/dev/null || true
+      # Unmount SECRETS and STORAGE partitions if mounted
+      if mountpoint -q /media/secrets 2>/dev/null; then
+        umount /media/secrets 2>/dev/null || true
+        echo "[LATE] SECRETS partition unmounted" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      fi
+      if mountpoint -q /media/storage 2>/dev/null; then
+        umount /media/storage 2>/dev/null || true
+        echo "[LATE] STORAGE partition unmounted" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      fi
+
+    #=========================================================================
+    # PHASE 8: SAVE DIAGNOSTIC LOGS
+    #=========================================================================
+    - |
+      echo "[LATE] Phase 8: Saving installation logs..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      cp /var/log/cloud-init*.log /media/diagnostics/ 2>/dev/null || true
+      cp -r /var/log/installer /media/diagnostics/ 2>/dev/null || true
+      cp /var/log/curtin*.log /media/diagnostics/ 2>/dev/null || true
+      cp -r /var/log/installer/subiquity /media/diagnostics/ 2>/dev/null || true
+      tail -500 /var/log/syslog > /media/diagnostics/syslog-tail.log 2>/dev/null || true
+      echo "[LATE] Installation completed: $(date)" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      df -h >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      # Create summary
+      echo "=== AUTOINSTALL SUMMARY ===" > /media/diagnostics/INSTALL-SUMMARY.txt
+      echo "Completed: $(date)" >> /media/diagnostics/INSTALL-SUMMARY.txt
+      echo "" >> /media/diagnostics/INSTALL-SUMMARY.txt
+      echo "Logs saved:" >> /media/diagnostics/INSTALL-SUMMARY.txt
+      ls -la /media/diagnostics/ >> /media/diagnostics/INSTALL-SUMMARY.txt 2>/dev/null || true
+      sync
+
+    # Final cleanup
+    - umount /media/diagnostics || true
+    - rm -rf /var/cache/autoinstall-packages
+
+  #=============================================================================
+  # USER DATA (Additional Cloud-Init Configuration)
+  #=============================================================================
+
+  user-data:
+    runcmd:
+      # Add user to docker group (user doesn't exist during install chroot,
+      # only created at first boot by cloud-init)
+      - usermod -aG docker user
+      # Add user to nopasswdlogin group (required by LightDM for auto-login)
+      - groupadd -f nopasswdlogin
+      - usermod -aG nopasswdlogin user
+      # Disable cloud-init after first boot (not needed for ephemeral workstation)
+      - touch /etc/cloud/cloud-init.disabled
+
+    # Set system message
+    write_files:
+      - path: /etc/motd
+        content: |
+          ══════════════════════════════════════════════════════════
+            Ephemeral Security Workstation
+          ══════════════════════════════════════════════════════════
+
+          System deployed via USB Autoinstall
+          Deployment date: $(date)
+
+          Quick commands:
+            vpn-up              Connect to VPN with killswitch
+            vpn-status          Check VPN status
+            security-status.sh  Check security posture
+
+          Documentation: /usr/share/doc/baseline/
+
+          IMPORTANT: Add your WireGuard config before connecting VPN
+            sudo nano /etc/wireguard/wg0.conf
+
+          ══════════════════════════════════════════════════════════
+
+  #=============================================================================
+  # REFRESH INSTALLER (Don't update during install)
+  #=============================================================================
+
+  refresh-installer:
+    update: no
+
+  #=============================================================================
+  # SHUTDOWN AFTER INSTALL
+  #=============================================================================
+
+  shutdown: reboot

@@ -1,0 +1,16 @@
+---
+extends: default
+
+rules:
+  # Embedded shell scripts make 80-char limit impractical
+  line-length:
+    max: 200
+  # cloud-init comments use #section-name style (no leading space)
+  comments:
+    min-spaces-from-content: 1
+    require-starting-space: false
+  # user-data starts with #cloud-config, not ---
+  document-start: disable
+  # autoinstall uses yes/no/on/off values legitimately
+  truthy:
+    allowed-values: ['true', 'false', 'yes', 'no', 'on', 'off']

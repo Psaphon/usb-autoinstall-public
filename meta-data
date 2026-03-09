@@ -1,0 +1,5 @@
+# Meta-data for cloud-init autoinstall
+# This file can be empty or minimal for USB autoinstall
+
+instance-id: ephemeral-workstation-usb-install
+local-hostname: workstation

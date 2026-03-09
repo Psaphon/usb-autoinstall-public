@@ -1,0 +1,45 @@
+# Core autoinstall packages
+# Desktop environment
+xfce4
+xfce4-goodies
+lightdm
+lightdm-gtk-greeter
+xfce4-notifyd
+xfce4-power-manager
+thunar
+xfce4-terminal
+dbus-x11
+xorg
+libnotify-bin
+tilix
+libasound2t64
+xdg-utils
+fonts-liberation
+fonts-dejavu
+
+# Network basics
+network-manager
+network-manager-gnome
+wpasupplicant
+curl
+wget
+
+# Python runtime
+python3
+python3-pip
+
+# Dev essentials
+git
+software-properties-common
+
+# Archive tools
+unzip
+zip
+p7zip-full
+
+# Base hardening
+ufw
+fail2ban
+unattended-upgrades
+apt-listchanges
+needrestart

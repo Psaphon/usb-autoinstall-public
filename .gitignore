@@ -1,0 +1,47 @@
+# Package files (too large for git, download with scripts/download-all-packages.sh)
+packages/*.deb
+packages/Packages
+packages/Packages.gz
+
+# Keep SHA256SUMS for verification
+!packages/SHA256SUMS
+
+# Secrets and credentials — NEVER commit these
+*.key
+*.pem
+.env
+.env.*
+
+# WireGuard configs (template is safe, real configs are not)
+components/security/vpn/wg0.conf
+
+# Development archives and local planning docs (kept locally, not on GitHub)
+docs/archive/
+scripts/archive/
+START-HERE.md
+FUTURE-PLANS.md
+TG*.md
+TESTING-GUIDE-*.md
+
+# Claude Code session data
+.claude/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Temporary files
+*.log
+*.tmp
+*~
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+.vscode/
+.idea/
