@@ -145,7 +145,7 @@ The SECRETS partition is preserved when you rebuild the USB.
 Partition 1: UEFI_BOOT    (10GB, FAT32)    — Rebuilt each time
 Partition 2: DIAGNOSTICS   (1GB, FAT32)     — Rebuilt each time
 Partition 3: SECRETS       (5GB, ext4)      — Preserved across rebuilds
-Partition 4: STORAGE       (remaining, ext4) — Large assets (Ollama, cloud images)
+Partition 4: STORAGE       (remaining, ext4) — Large assets (cloud images)
 ```
 
 ### Step 5: Boot and Install

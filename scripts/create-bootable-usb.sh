@@ -240,7 +240,7 @@ confirm_action() {
         preserve) echo "  - Partition 3: SECRETS (PRESERVED — ext4)" ;;
         create)   echo "  - Partition 3: SECRETS (NEW — ${SECRETS_SIZE}MB, ext4) — keys/configs" ;;
     esac
-    echo "  - Partition 4: STORAGE (remaining space, ext4) — Ollama, cloud images, large assets"
+    echo "  - Partition 4: STORAGE (remaining space, ext4) — Cloud images, large assets"
     echo ""
     read -rp "Are you sure you want to continue? (type 'yes' to proceed): " confirm
 
@@ -296,7 +296,7 @@ partition_usb() {
     # 1. EFI System Partition (10GB, FAT32) - ISO + core packages + scripts
     # 2. Diagnostics partition (1GB, FAT32) - install logs/debugging
     # 3. SECRETS (5GB, ext4) - keys, configs, wifi (persists across rebuilds)
-    # 4. STORAGE (remaining, ext4) - Ollama, cloud images, large non-core assets
+    # 4. STORAGE (remaining, ext4) - Cloud images, large non-core assets
 
     log "Creating EFI System Partition (${ESP_SIZE}MB)..."
     sgdisk --new=1:0:+${ESP_SIZE}M --typecode=1:ef00 --change-name=1:"$ESP_LABEL" "$device" &>> "$LOG_FILE"
@@ -586,7 +586,7 @@ add_autoinstall_files() {
         rsync -r --no-perms --no-owner --no-group "$autoinstall_dir/files/" "$target_dir/files/" &>> "$LOG_FILE"
     fi
 
-    # Copy components directory (security, devtools, dashboard, ollama)
+    # Copy components directory (security, devtools, dashboard)
     if [ -d "$autoinstall_dir/components" ]; then
         log "Copying components directory..."
         rsync -r --no-perms --no-owner --no-group "$autoinstall_dir/components/" "$target_dir/components/" &>> "$LOG_FILE"
@@ -610,19 +610,6 @@ add_storage_files() {
     local autoinstall_dir="$2"
 
     header "Adding Files to STORAGE Partition"
-
-    # Copy Ollama binary archive (for local LLM inference)
-    if [ -d "$autoinstall_dir/ollama" ] && [ "$(ls -A "$autoinstall_dir/ollama" 2>/dev/null)" ]; then
-        log "Copying Ollama directory (~1.7GB)..."
-        if ! rsync -r "$autoinstall_dir/ollama/" "$storage_mount/ollama/" &>> "$LOG_FILE"; then
-            error "Failed to copy Ollama directory (likely out of space on STORAGE partition)"
-            df -h "$storage_mount" | tee -a "$LOG_FILE"
-            exit 1
-        fi
-        log "  └─ Ollama archive copied"
-    else
-        warn "No Ollama directory found — local AI models won't be available offline"
-    fi
 
     # Copy cloud images (for AI sandbox VMs)
     if [ -d "$autoinstall_dir/cloud-images" ] && [ "$(ls -A "$autoinstall_dir/cloud-images" 2>/dev/null)" ]; then

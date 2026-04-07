@@ -13,7 +13,7 @@ packages/Packages.gz
 .env.*
 
 # WireGuard configs (template is safe, real configs are not)
-components/security/vpn/wg0.conf
+wg0.conf
 
 # Development archives and local planning docs (kept locally, not on GitHub)
 docs/archive/
@@ -23,8 +23,14 @@ FUTURE-PLANS.md
 TG*.md
 TESTING-GUIDE-*.md
 
+# Large binary files (download during USB creation, not stored in git)
+*.iso
+cloud-images/
+packages/Release
+
 # Claude Code session data
 .claude/
+CLAUDE.md
 
 # Python bytecode
 __pycache__/

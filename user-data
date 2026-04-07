@@ -203,7 +203,7 @@ autoinstall:
     #=========================================================================
     # STORAGE PARTITION MOUNT
     # Partition 4 (ext4, label STORAGE) holds large non-core assets:
-    # Ollama binary, cloud images, etc. Mounted for post-install access.
+    # Cloud images, etc. Mounted for post-install access.
     #=========================================================================
     - mkdir -p /media/storage
     - |
@@ -212,7 +212,7 @@ autoinstall:
         echo "[EARLY] STORAGE partition mounted at /media/storage" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
         ls -la /media/storage/ >> /media/diagnostics/autoinstall.log 2>/dev/null || true
       else
-        echo "[EARLY] WARNING: STORAGE partition not found — large assets (Ollama, cloud images) won't be available" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+        echo "[EARLY] WARNING: STORAGE partition not found — large assets (cloud images) won't be available" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
       fi
 
     # Verify package integrity (CRITICAL SECURITY CHECK)
@@ -404,7 +404,7 @@ autoinstall:
       # Bind-mount autoinstall files so post-install.sh can access them inside chroot
       mkdir -p /target/media/autoinstall
       mount --bind /media/autoinstall /target/media/autoinstall
-      # Bind-mount STORAGE partition (Ollama, cloud images) if available
+      # Bind-mount STORAGE partition (cloud images) if available
       if mountpoint -q /media/storage 2>/dev/null; then
         mkdir -p /target/media/storage
         mount --bind /media/storage /target/media/storage

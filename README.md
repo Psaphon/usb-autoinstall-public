@@ -151,7 +151,7 @@ usb-autoinstall/
 Partition 1: UEFI_BOOT    (10GB, FAT32)    — OS installer + autoinstall files
 Partition 2: DIAGNOSTICS   (1GB, FAT32)    — Installation logs
 Partition 3: SECRETS       (5GB, ext4)     — VPN configs, wifi, SSH keys (preserved across rebuilds)
-Partition 4: STORAGE       (remaining, ext4) — Ollama binary, cloud images, large assets
+Partition 4: STORAGE       (remaining, ext4) — Cloud images, large assets
 ```
 
 ### SECRETS Partition Setup (One-Time)
@@ -323,13 +323,11 @@ sha256sum -c SHA256SUMS 2>&1 | grep ubuntu-25.10-live-server-amd64.iso
 ## Version History
 
 - **3.2.0** (2026-03-05)
-  - Full code review and overhaul of all security scripts, dashboard, dev tools
+  - Full code review and overhaul
   - Firefox: real Mozilla .deb (replaced broken snap stub)
   - VPN killswitch: DNS leak prevention, correct rule ordering
-  - Dashboard: Flask 3.x fixes, VPN status detection
   - Dev tools: ground-up rewrite — multi-stack scaffolder
   - Wifi auto-connect from SECRETS partition
-  - See [GitHub Release](https://github.com/your-username/usb-autoinstall/releases/tag/v3.2.0)
 
 - **3.0.0** (2026-02-11)
   - SECRETS partition for persistent configs across rebuilds
@@ -338,5 +336,3 @@ sha256sum -c SHA256SUMS 2>&1 | grep ubuntu-25.10-live-server-amd64.iso
 - **2.1.0** (2026-02-08) — First successful hardware install
 
 - **1.0.0** (2025-10-26) — Initial release
-
-Full history: [GitHub Releases](https://github.com/your-username/usb-autoinstall/releases)

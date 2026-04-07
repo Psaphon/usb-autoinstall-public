@@ -105,7 +105,7 @@ deploy_components() {
 
         if [ -x "$component_dir/install.sh" ] || [ -f "$component_dir/install.sh" ]; then
             log_info "=== Deploying component: $name ==="
-            # Export STORAGE_ROOT so components can find Ollama, cloud images, etc.
+            # Export STORAGE_ROOT so components can find cloud images, etc.
             if STORAGE_ROOT="$STORAGE_ROOT" bash "$component_dir/install.sh" 2>>"$LOG_FILE"; then
                 log_success "Component '$name' deployed"
             else

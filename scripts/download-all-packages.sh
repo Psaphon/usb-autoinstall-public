@@ -10,14 +10,13 @@
 #
 # Reads package lists from:
 #   - packages.list          (core desktop, network, python, etc.)
-#   - components/*/packages.list (security, devtools, dashboard, ollama)
+#   - components/*/packages.list (security, devtools, dashboard)
 #
 # Also downloads separately:
 #   - Docker packages from Docker's repository
 #   - Firefox from Mozilla's APT repo (Ubuntu's is a snap stub)
 #   - VS Code from Microsoft
 #   - Ubuntu cloud image for AI sandbox VMs
-#   - Ollama binary for local LLM inference
 #
 # Total download size: ~1.5-2GB (XFCE desktop + all dependencies)
 #===============================================================================
@@ -347,30 +346,6 @@ download_cloud_image() {
     fi
 }
 
-download_ollama() {
-    log_info "Downloading Ollama binary for local LLM inference..."
-
-    local ollama_dir="$PACKAGES_DIR/../ollama"
-    mkdir -p "$ollama_dir"
-
-    local ollama_url="https://github.com/ollama/ollama/releases/latest/download/ollama-linux-amd64.tar.zst"
-    local ollama_file="$ollama_dir/ollama-linux-amd64.tar.zst"
-
-    if [ -f "$ollama_file" ]; then
-        log_info "Ollama binary already downloaded — skipping"
-        return 0
-    fi
-
-    log_info "Downloading Ollama (~1.7GB, includes CUDA GPU libraries)..."
-    if wget --show-progress -O "$ollama_file" "$ollama_url"; then
-        log_success "Ollama binary downloaded: $ollama_file"
-    else
-        rm -f "$ollama_file"
-        log_error "Failed to download Ollama binary"
-        return 1
-    fi
-}
-
 generate_package_index() {
     log_info "Generating package index for apt..."
 
@@ -475,7 +450,6 @@ show_summary() {
     echo "  - Firefox: 1 package + dependencies (from Mozilla APT repo)"
     echo "  - VS Code: 1 package"
     echo "  - Cloud image: Ubuntu 24.04 minimal (~600MB)"
-    echo "  - Ollama: Linux binary for local LLM inference"
     echo ""
     echo "Files generated:"
     echo "  - Packages      (apt package index)"
@@ -533,8 +507,6 @@ main() {
     download_firefox || log_warning "Firefox download failed - will be skipped during offline install"
     download_vscode
     download_cloud_image
-    download_ollama || log_warning "Ollama download failed — local AI models won't be available offline"
-
     # Cleanup and finalize
     cleanup_duplicates
     generate_package_index

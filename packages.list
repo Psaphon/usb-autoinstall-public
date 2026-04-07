@@ -4,6 +4,7 @@ xfce4
 xfce4-goodies
 lightdm
 lightdm-gtk-greeter
+lightdm-gtk-greeter-settings
 xfce4-notifyd
 xfce4-power-manager
 thunar
@@ -17,19 +18,26 @@ xdg-utils
 fonts-liberation
 fonts-dejavu
 
-# Network basics
+# Network
 network-manager
 network-manager-gnome
 wpasupplicant
+wireguard-tools
+resolvconf
 curl
 wget
 
-# Python runtime
+# Python runtime & dashboard
 python3
 python3-pip
+python3-flask
+python3-psutil
+python3-requests
+python3-feedparser
 
 # Dev essentials
 git
+build-essential
 software-properties-common
 
 # Archive tools
@@ -37,9 +45,19 @@ unzip
 zip
 p7zip-full
 
-# Base hardening
+# Security & hardening
 ufw
 fail2ban
+aide
+lynis
+rkhunter
+chkrootkit
+debsums
 unattended-upgrades
 apt-listchanges
 needrestart
+
+# VM/QEMU (AI Sandbox)
+qemu-system-x86
+qemu-utils
+cloud-image-utils
