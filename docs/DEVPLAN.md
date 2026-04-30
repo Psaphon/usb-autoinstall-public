@@ -24,7 +24,7 @@ Ephemeral security workstation installer: Ubuntu 25.10 + XFCE, LUKS encryption, 
 
 **Branch:** `feature/tailscale-package`
 **Depends on:** none
-**Status:** Complete
+**Status:** PR Open
 **Requires:** both
 
 ### Goal
