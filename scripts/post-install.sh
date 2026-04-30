@@ -124,7 +124,9 @@ enable_services() {
     systemctl daemon-reload 2>>"$LOG_FILE" || true
 
     # Core services (always enabled)
-    for svc in ufw fail2ban lightdm; do
+    # tailscaled is enabled but not authenticated — user runs `tailscale up`
+    # interactively after first boot to join the tailnet
+    for svc in ufw fail2ban lightdm tailscaled; do
         systemctl enable "$svc" >>"$LOG_FILE" 2>&1 || true
     done
     systemctl set-default graphical.target >>"$LOG_FILE" 2>&1 || true

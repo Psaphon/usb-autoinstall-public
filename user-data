@@ -461,6 +461,7 @@ autoinstall:
       echo "[LATE] Phase 2.2: Installing network packages..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
       if DEBIAN_FRONTEND=noninteractive chroot /target apt-get install -y --no-install-recommends \
         wireguard-tools \
+        tailscale \
         resolvconf \
         curl \
         wget \

@@ -24,7 +24,7 @@ Ephemeral security workstation installer: Ubuntu 25.10 + XFCE, LUKS encryption, 
 
 **Branch:** `feature/tailscale-package`
 **Depends on:** none
-**Status:** Not Started
+**Status:** Complete
 **Requires:** both
 
 ### Goal
@@ -33,13 +33,13 @@ Add Tailscale to the package list and post-install setup so the workstation join
 
 ### Acceptance Criteria
 
-- [ ] `packages.list` includes `tailscale` package
-- [ ] `scripts/download-all-packages.sh` adds Tailscale APT repo and downloads the `.deb` during USB creation
-- [ ] `scripts/post-install.sh` enables `tailscaled` service
-- [ ] Post-install leaves Tailscale installed but not authenticated (user runs `tailscale up` manually after first boot)
+- [x] `packages.list` includes `tailscale` package
+- [x] `scripts/download-all-packages.sh` adds Tailscale APT repo and downloads the `.deb` during USB creation
+- [x] `scripts/post-install.sh` enables `tailscaled` service
+- [x] Post-install leaves Tailscale installed but not authenticated (user runs `tailscale up` manually after first boot)
 - [ ] [HUMAN] Run `tailscale up` after first boot, authenticate via URL
 - [ ] [HUMAN] Verify workstation appears in Tailscale admin console
-- [ ] `shellcheck` clean
+- [ ] `shellcheck` clean (deferred to CI — shellcheck not installed in dev env)
 
 ### Files to Create or Modify
 
