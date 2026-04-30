@@ -121,6 +121,31 @@ setup_docker_repo() {
     log_success "Docker repository configured"
 }
 
+setup_tailscale_repo() {
+    log_info "Setting up Tailscale repository..."
+
+    # Tailscale .debs are universal across Ubuntu releases — pin to noble (24.04)
+    # so this works regardless of the host distro version
+    local codename="noble"
+
+    mkdir -p /etc/apt/keyrings
+    local keyring="/etc/apt/keyrings/tailscale.gpg"
+    if [ ! -f "$keyring" ]; then
+        if ! curl -fsSL "https://pkgs.tailscale.com/stable/ubuntu/${codename}.noarmor.gpg" -o "$keyring"; then
+            log_error "Failed to download Tailscale signing key"
+            return 1
+        fi
+        chmod a+r "$keyring"
+    fi
+
+    echo "deb [signed-by=${keyring}] https://pkgs.tailscale.com/stable/ubuntu ${codename} main" \
+        > /etc/apt/sources.list.d/tailscale.list
+
+    apt-get update -qq
+
+    log_success "Tailscale repository configured"
+}
+
 get_all_dependencies() {
     local package="$1"
 
@@ -496,6 +521,9 @@ main() {
 
     # Setup Docker repository
     setup_docker_repo || log_warning "Docker repository setup failed - Docker packages may not download"
+
+    # Setup Tailscale repository
+    setup_tailscale_repo || log_warning "Tailscale repository setup failed - Tailscale package may not download"
 
     # Create packages directory
     mkdir -p "$PACKAGES_DIR"

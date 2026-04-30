@@ -23,6 +23,7 @@ network-manager
 network-manager-gnome
 wpasupplicant
 wireguard-tools
+tailscale
 resolvconf
 curl
 wget
