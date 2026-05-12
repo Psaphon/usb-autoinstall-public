@@ -1,8 +1,10 @@
 # Development Plan: USB Autoinstall (Public)
 
-**Status:** In Progress
+**Status:** In Progress (transitioning — see note)
 **Created:** 2026-04-07
-**Updated:** 2026-04-07
+**Updated:** 2026-05-12
+
+> **Transition note (2026-05-12):** A new private repo `hub` (in planning at `~/Projects/NEW-PROJECTS/hub/`) is being built as the persistent headless workstation that will replace this ephemeral installer. While hub is under manual development, this repo continues to ship small Not-Started AI features (currently `fix-ollama-readme` and `diagnostics-logs`). Heavier features (`restic-backup`, `status-dashboard`) and the [HUMAN] cleanup (`devtools-submodule`) are marked Deferred — they will be superseded by hub equivalents or resolved at archival. Patterns from this repo (4-partition USB layout, offline apt, LUKS handling, late-commands phases) are valuable reference for hub's `autoinstall-iso-build` feature.
 
 ## Overview
 
@@ -119,12 +121,14 @@ Fix Phase 8 log capture so cloud-init and subiquity logs are saved to the DIAGNO
 
 **Branch:** `feature/restic-backup`
 **Depends on:** none
-**Status:** Not Started
+**Status:** Deferred — superseded by `hub` `data-backup` (private repo `hub`, see `~/Projects/NEW-PROJECTS/hub/DEVPLAN.md`)
 **Requires:** both
 
 ### Goal
 
 Add restic backup support for automated encrypted backups of user data. Packages downloaded for offline install, scripts for backup management.
+
+> **Deferred 2026-05-12.** The new persistent `hub` workstation (private repo, in planning) will handle backups via its `data-backup` nice-to-have, targeting an internal 2 TB HDD with proper snapshot retention. Adding restic to this ephemeral installer adds complexity for marginal value during the transition window. Revisit only if the ephemeral desktop's lifetime is extended past hub's v1.0.0.
 
 ### Acceptance Criteria
 
@@ -159,12 +163,14 @@ Add restic backup support for automated encrypted backups of user data. Packages
 
 **Branch:** `feature/status-dashboard`
 **Depends on:** none
-**Status:** Not Started
+**Status:** Deferred — superseded by `hub` `dashboard` feature
 **Requires:** ai
 
 ### Goal
 
 Add a lightweight status dashboard that shows the state of all projects under `~/Projects`. Displays git branch, clean/dirty status, open PRs, CI status, and next DEVPLAN feature. Accessible from the local machine or via Tailscale.
+
+> **Deferred 2026-05-12.** The new `hub` workstation includes a richer Glance + Beszel + FastAPI-collector dashboard reading `dtl workflow` status directly. Shipping the shell-script version here would create two implementations to maintain across the transition. If the ephemeral desktop needs interim visibility, run `dtl workflow list --plan docs/DEVPLAN.md` per-project at the CLI.
 
 ### Acceptance Criteria
 
@@ -200,8 +206,10 @@ Add a lightweight status dashboard that shows the state of all projects under `~
 
 **Branch:** `fix/devtools-submodule`
 **Depends on:** none
-**Status:** Not Started
+**Status:** Deferred — resolve as part of repo archival
 **Requires:** human
+
+> **Deferred 2026-05-12.** This is a cleanup item; the cleanest moment to resolve it is when this repo is finally archived in favor of `hub`. Until then it's harmless cruft.
 
 ### Goal
 
