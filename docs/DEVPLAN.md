@@ -26,7 +26,7 @@ Ephemeral security workstation installer: Ubuntu 25.10 + XFCE, LUKS encryption, 
 
 **Branch:** `feature/tailscale-package`
 **Depends on:** none
-**Status:** PR Open
+**Status:** Merged
 **Requires:** both
 
 ### Goal
@@ -94,7 +94,7 @@ Remove references to Ollama from README.md. Ollama is now a separate project und
 
 **Branch:** `fix/diagnostics-logs`
 **Depends on:** none
-**Status:** PR Open
+**Status:** Merged
 **Requires:** ai
 
 ### Goal
