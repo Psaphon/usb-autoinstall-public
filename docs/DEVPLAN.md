@@ -94,7 +94,7 @@ Remove references to Ollama from README.md. Ollama is now a separate project und
 
 **Branch:** `fix/diagnostics-logs`
 **Depends on:** none
-**Status:** Not Started
+**Status:** Complete
 **Requires:** ai
 
 ### Goal
@@ -103,11 +103,11 @@ Fix Phase 8 log capture so cloud-init and subiquity logs are saved to the DIAGNO
 
 ### Acceptance Criteria
 
-- [ ] Phase 8 in `user-data` late-commands copies `cloud-init-output.log` to DIAGNOSTICS
-- [ ] Phase 8 copies subiquity installer logs (`/var/log/installer/`) to DIAGNOSTICS
-- [ ] Logs are copied with `cp` + `|| true` (non-fatal if source missing)
-- [ ] `INSTALL-SUMMARY.txt` on DIAGNOSTICS includes timestamps and log file listing
-- [ ] `shellcheck` clean
+- [x] Phase 8 in `user-data` late-commands copies `cloud-init-output.log` to DIAGNOSTICS
+- [x] Phase 8 copies subiquity installer logs (`/var/log/installer/`) to DIAGNOSTICS
+- [x] Logs are copied with `cp` + `|| true` (non-fatal if source missing)
+- [x] `INSTALL-SUMMARY.txt` on DIAGNOSTICS includes timestamps and log file listing
+- [x] `shellcheck` clean
 
 ### Files to Create or Modify
 
