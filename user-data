@@ -689,22 +689,34 @@ autoinstall:
 
     #=========================================================================
     # PHASE 8: SAVE DIAGNOSTIC LOGS
+    # Capture cloud-init, subiquity, and curtin logs from the live install
+    # environment to DIAGNOSTICS so failures can be diagnosed post-reboot.
+    # All copies use `cp ... || true` so a missing source never aborts install.
     #=========================================================================
     - |
-      echo "[LATE] Phase 8: Saving installation logs..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
-      cp /var/log/cloud-init*.log /media/diagnostics/ 2>/dev/null || true
+      PHASE8_START=$(date)
+      echo "[LATE] Phase 8: Saving installation logs ($PHASE8_START)..." >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      # Cloud-init logs (live ISO runs the autoinstall under cloud-init)
+      cp /var/log/cloud-init.log /media/diagnostics/ 2>/dev/null || true
+      cp /var/log/cloud-init-output.log /media/diagnostics/ 2>/dev/null || true
+      # Subiquity installer logs (includes subiquity/, curtin*.log, casper.log)
       cp -r /var/log/installer /media/diagnostics/ 2>/dev/null || true
+      # Top-level curtin logs if present outside /var/log/installer
       cp /var/log/curtin*.log /media/diagnostics/ 2>/dev/null || true
-      cp -r /var/log/installer/subiquity /media/diagnostics/ 2>/dev/null || true
+      # Syslog tail for quick triage
       tail -500 /var/log/syslog > /media/diagnostics/syslog-tail.log 2>/dev/null || true
-      echo "[LATE] Installation completed: $(date)" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
+      PHASE8_END=$(date)
+      echo "[LATE] Installation completed: $PHASE8_END" >> /media/diagnostics/autoinstall.log 2>/dev/null || true
       df -h >> /media/diagnostics/autoinstall.log 2>/dev/null || true
-      # Create summary
-      echo "=== AUTOINSTALL SUMMARY ===" > /media/diagnostics/INSTALL-SUMMARY.txt
-      echo "Completed: $(date)" >> /media/diagnostics/INSTALL-SUMMARY.txt
-      echo "" >> /media/diagnostics/INSTALL-SUMMARY.txt
-      echo "Logs saved:" >> /media/diagnostics/INSTALL-SUMMARY.txt
-      ls -la /media/diagnostics/ >> /media/diagnostics/INSTALL-SUMMARY.txt 2>/dev/null || true
+      # Write install summary with timestamps and a listing of captured logs
+      {
+        echo "=== AUTOINSTALL SUMMARY ==="
+        echo "Phase 8 started:   $PHASE8_START"
+        echo "Phase 8 completed: $PHASE8_END"
+        echo ""
+        echo "Captured logs on DIAGNOSTICS partition:"
+        ls -la /media/diagnostics/ 2>/dev/null || true
+      } > /media/diagnostics/INSTALL-SUMMARY.txt
       sync
 
     # Final cleanup
