@@ -69,7 +69,7 @@ Add Tailscale to the package list and post-install setup so the workstation join
 
 **Branch:** `fix/ollama-readme`
 **Depends on:** none
-**Status:** Complete
+**Status:** PR Open
 **Requires:** ai
 
 ### Goal
