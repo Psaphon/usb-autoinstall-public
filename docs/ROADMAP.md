@@ -24,15 +24,14 @@ Tracking known issues, planned fixes, and feature work for usb-autoinstall.
 - **Description:** The `autoinstall.log` was written to the DIAGNOSTICS partition during install (early-commands and late-commands both log there), but the `cloud-init-output.log` and subiquity installer logs are not being saved to DIAGNOSTICS. The Phase 8 log save step should copy these to the partition before install completes.
 - **Files:** `user-data` (late-commands Phase 8)
 
-### 5. README references Ollama in USB partition layout
-- **Priority:** Low
-- **Type:** Cleanup
-- **Description:** README.md still mentions "Ollama binary" in the STORAGE partition description. Should be updated now that Ollama is a separate project.
-- **Files:** `README.md`
-
 ---
 
 ## Completed
+
+### 5. README references Ollama in USB partition layout
+- **Resolved:** 2026-05-13
+- **Description:** README.md STORAGE partition description no longer mentions "Ollama binary" — now reads "Cloud images, large assets". Ollama is handled by a separate project.
+- **Files:** `README.md`
 
 ### 1. Remove Ollama from package download script
 - **Resolved:** 2026-03-20

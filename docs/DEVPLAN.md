@@ -69,7 +69,7 @@ Add Tailscale to the package list and post-install setup so the workstation join
 
 **Branch:** `fix/ollama-readme`
 **Depends on:** none
-**Status:** Not Started
+**Status:** Complete
 **Requires:** ai
 
 ### Goal
@@ -78,9 +78,9 @@ Remove references to Ollama from README.md. Ollama is now a separate project und
 
 ### Acceptance Criteria
 
-- [ ] README.md does not mention "Ollama" in the STORAGE partition description
-- [ ] No other stale Ollama references remain in any tracked file
-- [ ] `shellcheck` clean (if any scripts touched)
+- [x] README.md does not mention "Ollama" in the STORAGE partition description
+- [x] No other stale Ollama references remain in any tracked file
+- [x] `shellcheck` clean (if any scripts touched)
 
 ### Files to Create or Modify
 
