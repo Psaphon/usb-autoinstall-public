@@ -94,7 +94,7 @@ Remove references to Ollama from README.md. Ollama is now a separate project und
 
 **Branch:** `fix/diagnostics-logs`
 **Depends on:** none
-**Status:** Complete
+**Status:** PR Open
 **Requires:** ai
 
 ### Goal
